@@ -1,13 +1,15 @@
 #!/bin/bash
 set -eo pipefail
 
-echo "=== 1. Update OS and install dependencies ==="
+echo "=== 1. Update OS and install OpenSSH & dependencies ==="
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y \
-  curl wget git screen make build-essential ca-certificates gnupg \
+  openssh-server curl wget git screen make build-essential ca-certificates gnupg \
   libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev \
   libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev \
   libffi-dev liblzma-dev
+
+sudo systemctl enable --now ssh
 
 echo "=== 2. Disable SSH Password Authentication ==="
 sudo sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
