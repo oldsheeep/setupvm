@@ -1,0 +1,98 @@
+cat << 'EOF' > setup.sh
+#!/bin/bash
+set -euo pipefail
+
+echo "=== 1. OS更新および依存パッケージのインストール ==="
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y \
+  curl wget git screen make build-essential ca-certificates gnupg \
+  libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev \
+  libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev \
+  libffi-dev liblzma-dev
+
+echo "=== 2. SSH パスワード認証の拒否（鍵 & Tunnel 経由前提） ==="
+sudo sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
+sudo sed -i 's/^#\?KbdInteractiveAuthentication .*/KbdInteractiveAuthentication no/' /etc/ssh/sshd_config
+sudo mkdir -p /etc/ssh/sshd_config.d
+echo "PasswordAuthentication no" | sudo tee /etc/ssh/sshd_config.d/50-no-password.conf
+echo "PubkeyAuthentication yes" | sudo tee -a /etc/ssh/sshd_config.d/50-no-password.conf
+
+echo "=== 3. Cloudflare Tunnel (cloudflared) のインストール ==="
+sudo mkdir -p --mode=0755 /etc/apt/keyrings
+curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /etc/apt/keyrings/cloudflare-main.gpg >/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared noble main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
+sudo apt update && sudo apt install -y cloudflared
+
+echo "=== 4. Tailscale のインストール ==="
+curl -fsSL https://tailscale.com/install.sh | sudo sh
+
+echo "=== 5. Docker & Docker Compose のインストール ==="
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER
+
+echo "=== 6. GitHub CLI (gh) のインストール ==="
+sudo mkdir -p -m 755 /etc/apt/keyrings
+wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
+sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt update && sudo apt install -y gh
+
+echo "=== 7. Taskfile (Task) のインストール ==="
+sudo sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
+
+echo "=== 8. Golang のインストール ==="
+GO_VER=$(curl -s https://go.dev/VERSION?m=text | head -n1)
+wget -q "https://go.dev/dl/${GO_VER}.linux-amd64.tar.gz"
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf "${GO_VER}.linux-amd64.tar.gz"
+rm "${GO_VER}.linux-amd64.tar.gz"
+
+echo "=== 9. uv のインストール ==="
+curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
+
+echo "=== 10. nvm / Node.js (22, 24, 26) / Claude CLI のインストール ==="
+export NVM_DIR="$HOME/.nvm"
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+nvm install 22
+nvm install 24
+nvm install 26
+nvm default 24
+
+npm install -g @anthropic-ai/claude-code
+
+echo "=== 11. pyenv / Python 3.14 のインストール ==="
+export PYENV_ROOT="$HOME/.pyenv"
+git clone https://github.com/pyenv/pyenv.git "$PYENV_ROOT"
+export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+pyenv install 3.14
+pyenv global 3.14
+
+echo "=== 12. 環境変数 (~/.bashrc) の自動設定 ==="
+cat << 'PROFILE' >> ~/.bashrc
+
+# nvm
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+# pyenv
+export PYENV_ROOT="$HOME/.pyenv"
+[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+
+# Go & Local Bin PATH
+export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin:$HOME/.local/bin
+PROFILE
+
+echo "=== 13. キャッシュ削除 ==="
+sudo apt clean
+sudo rm -rf /var/lib/apt/lists/*
+rm setup.sh
+
+echo "セットアップが完了しました。"
+EOF
+
+chmod +x setup.sh
+./setup.sh
