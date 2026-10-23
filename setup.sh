@@ -9,14 +9,24 @@ sudo apt install -y \
   libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev \
   libffi-dev liblzma-dev
 
-sudo systemctl enable --now ssh
+sudo systemctl enable --now ssh || true
 
 echo "=== 2. Disable SSH Password Authentication ==="
-sudo sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
-sudo sed -i 's/^#\?KbdInteractiveAuthentication .*/KbdInteractiveAuthentication no/' /etc/ssh/sshd_config
+# Ensure sshd_config and config directory exist
 sudo mkdir -p /etc/ssh/sshd_config.d
-echo "PasswordAuthentication no" | sudo tee /etc/ssh/sshd_config.d/50-no-password.conf > /dev/null
-echo "PubkeyAuthentication yes" | sudo tee -a /etc/ssh/sshd_config.d/50-no-password.conf > /dev/null
+if [ -f /etc/ssh/sshd_config ]; then
+  sudo sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config || true
+  sudo sed -i 's/^#\?KbdInteractiveAuthentication .*/KbdInteractiveAuthentication no/' /etc/ssh/sshd_config || true
+fi
+
+# Force password authentication off via drop-in config
+cat << 'SSHOVERRIDE' | sudo tee /etc/ssh/sshd_config.d/50-no-password.conf > /dev/null
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+SSHOVERRIDE
+
+sudo systemctl restart ssh || sudo systemctl restart sshd || true
 
 echo "=== 3. Install Cloudflare Tunnel (cloudflared) ==="
 sudo mkdir -p --mode=0755 /etc/apt/keyrings
@@ -54,7 +64,6 @@ echo "=== 10. Install nvm, Node.js (22, 24, 26), and Claude CLI ==="
 export NVM_DIR="$HOME/.nvm"
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 
-# Load nvm safely
 if [ -s "$NVM_DIR/nvm.sh" ]; then
   source "$NVM_DIR/nvm.sh"
 fi
