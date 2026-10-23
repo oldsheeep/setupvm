@@ -1,6 +1,7 @@
 #!/bin/bash
 set -eo pipefail
 
+echo "=== v4 ==="
 echo "=== 1. Update OS and install OpenSSH & dependencies ==="
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y \
